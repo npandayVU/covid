@@ -1,0 +1,7 @@
+pandas
+numpy
+seaborn
+matplotlib
+sqlite3
+statsmodels.tsa.seasonal
+plotly.express
