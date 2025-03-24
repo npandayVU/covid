@@ -104,6 +104,7 @@ complete.fillna({
 
 # %%
 duplicates = complete.duplicated()
+dupe_count = duplicates.sum()
 complete.drop_duplicates(inplace=True)
 
 # %% [markdown]
@@ -175,7 +176,7 @@ def estimate_params(df, gamma, country):
         'mu': mu
     })
     params['gamma'] = gamma
-    params = params.rolling(7, min_periods=1).mean().clip(lower=0, upper=1)\
+    params = params.rolling(7, min_periods=1).mean().clip(lower=0)\
                 .dropna().astype(float)
     return params
 
@@ -196,7 +197,8 @@ def sird_model(df, gamma, country):
     sird = SIRD(s0, i0, r0, d0)
     params = estimate_params(df, gamma, country)
     sird.simulate(alpha=params['alpha'], beta=params['beta'], gamma=params['gamma'], mu=params['mu'])
-    return pd.DataFrame(sird.ts, index=daywise.index)
+    sird_df = pd.DataFrame(sird.ts, index=daywise.index)
+    return sird_df / population
 
 # %% [markdown]
 # ## R0
@@ -277,14 +279,23 @@ continents = complete['WHO.Region'].unique()
 dates = complete['Date'].unique()
 
 st.sidebar.title("Dashboard Controls")
-selected_country = st.sidebar.selectbox("Select a country", countries)
-selected_continent = st.sidebar.selectbox("Select a continent", continents)
+selected_continent = st.sidebar.selectbox("Select continent", continents)
+selected_country = st.sidebar.selectbox("Select country", countries)
 selected_start_date = st.sidebar.selectbox("Select start date", dates)
 selected_end_date = st.sidebar.selectbox("Select end date", dates[dates >= selected_start_date])
 
 complete = complete[(complete['Date'] >= selected_start_date) &
                     (complete['Date'] <= selected_end_date)]
 with tab1:
+    st.subheader("General Statistics")
+    stats = {
+        'Datapoints': complete.size,
+        'Continents': continents.size,
+        'Countries': countries.size,
+        'Dates': dates[-1] - dates[0],
+    }
+    st.dataframe(stats)
+
     st.subheader("Global COVID-19 Progression (as Population Fractions)")
     for col in ['Confirmed', 'Active', 'Recovered', 'Deaths']:
         df = complete[['Date', col]].copy()
@@ -302,6 +313,9 @@ with tab2:
 with tab3:
     st.subheader(f'COVID-19 in {selected_country}')
     plot_cases(complete, selected_country)
-    st.subheader(f'SIRD-Model')
-    params = estimate_params(complete, GAMMA, selected_country)
-    lineplot(params, title=f'Estimated Parameters', xlabel='Date')
+    with st.spinner("Estimating parameters..."):
+        params = estimate_params(complete, GAMMA, selected_country)
+    # params = estimate_params(complete, GAMMA, selected_country)
+    lineplot(params, title=f'Estimated SIRD-Model Parameters - {selected_country}', xlabel='Date')
+    sird = sird_model(complete, GAMMA, selected_country)
+    lineplot(sird, title=f'SIRD-Model - {selected_country}', xlabel='date', ylabel='Fraction of Population')
